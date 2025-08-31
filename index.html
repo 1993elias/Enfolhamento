@@ -315,8 +315,8 @@
         // Classes do modelo de enfolhamento (ordem correta do treinamento)
         const classNames = ['Alto_enfolhamento', 'Baixo_enfolhamento', 'Medio_enfolhamento'];
         
-        // URL do modelo no GitHub
-        const MODEL_URL = 'https://raw.githubusercontent.com/1993elias/Enfolhamento/main/modelo_tfjs/model.json';
+        // URL do modelo no GitHub (arquivos estão na raiz do repositório)
+        const MODEL_URL = 'https://raw.githubusercontent.com/1993elias/Enfolhamento/main/modelo.json';
 
         // Elementos DOM
         const statusEl = document.getElementById('status');
@@ -335,6 +335,9 @@
                 statusEl.textContent = 'Carregando modelo de IA...';
                 statusEl.className = 'status loading';
                 
+                console.log('Tentando carregar modelo de:', MODEL_URL);
+                
+                // Tentar carregar o modelo
                 model = await tf.loadLayersModel(MODEL_URL);
                 
                 statusEl.textContent = '✅ Modelo carregado! Pronto para classificar imagens.';
@@ -342,6 +345,7 @@
                 
                 console.log('Modelo carregado com sucesso!');
                 console.log('Input shape:', model.input.shape);
+                console.log('Output shape:', model.output.shape);
                 
                 // Esconder status após 3 segundos
                 setTimeout(() => {
@@ -349,10 +353,57 @@
                 }, 3000);
                 
             } catch (error) {
-                console.error('Erro ao carregar modelo:', error);
-                statusEl.textContent = '❌ Erro ao carregar modelo. Verifique se os arquivos estão no GitHub.';
+                console.error('Erro detalhado ao carregar modelo:', error);
+                
+                let errorMessage = '❌ Erro ao carregar modelo. ';
+                
+                if (error.message.includes('fetch')) {
+                    errorMessage += 'Verifique se os arquivos estão no GitHub na pasta correta.';
+                } else if (error.message.includes('JSON')) {
+                    errorMessage += 'Arquivo model.json corrompido ou inválido.';
+                } else {
+                    errorMessage += 'Erro desconhecido. Verifique o console para detalhes.';
+                }
+                
+                statusEl.textContent = errorMessage;
                 statusEl.className = 'status error';
+                
+                // Tentar URLs alternativas
+                console.log('Tentando URLs alternativas...');
+                await tryAlternativeUrls();
             }
+        }
+
+        // Tentar URLs alternativas
+        async function tryAlternativeUrls() {
+            const alternativeUrls = [
+                'https://raw.githubusercontent.com/1993elias/Enfolhamento/master/modelo.json',
+                'https://cdn.jsdelivr.net/gh/1993elias/Enfolhamento/modelo.json',
+                'https://cdn.jsdelivr.net/gh/1993elias/Enfolhamento@main/modelo.json'
+            ];
+            
+            for (const url of alternativeUrls) {
+                try {
+                    console.log('Tentando URL alternativa:', url);
+                    statusEl.textContent = `Tentando carregar de: ${url.split('/').pop()}...`;
+                    
+                    model = await tf.loadLayersModel(url);
+                    
+                    statusEl.textContent = '✅ Modelo carregado com URL alternativa!';
+                    statusEl.className = 'status ready';
+                    
+                    setTimeout(() => {
+                        statusEl.style.display = 'none';
+                    }, 3000);
+                    
+                    return;
+                } catch (err) {
+                    console.log('URL alternativa falhou:', url, err);
+                }
+            }
+            
+            statusEl.textContent = '❌ Não foi possível carregar o modelo de nenhuma URL. Verifique se os arquivos estão publicados no GitHub.';
+            statusEl.className = 'status error';
         }
 
         // Event listeners para upload
@@ -414,34 +465,54 @@
         }
 
         async function classifyImage() {
-            if (!model || !currentImage) {
-                alert('Modelo não carregado ou imagem não selecionada.');
+            // Verificações mais detalhadas
+            if (!model) {
+                alert('❌ Modelo ainda não foi carregado. Aguarde o carregamento ou recarregue a página.');
+                console.error('Modelo não disponível');
+                return;
+            }
+            
+            if (!currentImage) {
+                alert('❌ Nenhuma imagem selecionada. Faça upload de uma imagem primeiro.');
+                console.error('Imagem não selecionada');
                 return;
             }
 
             try {
                 classifyBtn.disabled = true;
                 classifyBtn.textContent = '🔄 Classificando...';
+                
+                console.log('Iniciando classificação...');
 
                 // Preparar imagem
                 const imgElement = new Image();
                 imgElement.crossOrigin = 'anonymous';
                 
-                await new Promise((resolve) => {
-                    imgElement.onload = resolve;
+                await new Promise((resolve, reject) => {
+                    imgElement.onload = () => {
+                        console.log('Imagem carregada:', imgElement.width, 'x', imgElement.height);
+                        resolve();
+                    };
+                    imgElement.onerror = () => reject(new Error('Erro ao carregar imagem'));
                     imgElement.src = currentImage;
                 });
 
                 // Converter para tensor (seguindo o preprocessamento do seu modelo)
+                console.log('Convertendo imagem para tensor...');
                 const tensor = tf.browser.fromPixels(imgElement)
                     .resizeNearestNeighbor([224, 224]) // Redimensionar para 224x224
                     .toFloat()
                     .div(255.0) // Normalizar para 0-1 (como no seu modelo)
                     .expandDims(0); // Adicionar dimensão batch
+                
+                console.log('Tensor shape:', tensor.shape);
 
                 // Fazer predição
+                console.log('Fazendo predição...');
                 const predictions = model.predict(tensor);
                 const predArray = await predictions.data();
+                
+                console.log('Predições:', predArray);
                 
                 // Limpar tensors da memória
                 tensor.dispose();
@@ -451,8 +522,8 @@
                 displayResults(predArray);
                 
             } catch (error) {
-                console.error('Erro na classificação:', error);
-                alert('Erro ao classificar imagem. Tente novamente.');
+                console.error('Erro detalhado na classificação:', error);
+                alert(`Erro ao classificar imagem: ${error.message}`);
             } finally {
                 classifyBtn.disabled = false;
                 classifyBtn.textContent = '🔍 Classificar Imagem';
