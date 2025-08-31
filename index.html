@@ -250,6 +250,26 @@
             color: rgba(255,255,255,0.8);
             font-size: 0.9em;
         }
+
+        .main-prediction {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .main-prediction h3 {
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+
+        .main-prediction .confidence {
+            font-size: 2.5em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>
@@ -278,7 +298,8 @@
         </div>
 
         <div class="results-container" id="results-container">
-            <h3 style="color: #4a5568; margin-bottom: 20px; text-align: center;">📊 Resultados da Classificação</h3>
+            <div id="main-result"></div>
+            <h3 style="color: #4a5568; margin-bottom: 20px; text-align: center;">📊 Detalhes da Classificação</h3>
             <div id="results"></div>
         </div>
     </div>
@@ -291,11 +312,11 @@
         let model = null;
         let currentImage = null;
         
-        // Classes do modelo (na ordem correta)
+        // Classes do modelo de enfolhamento (ordem correta do treinamento)
         const classNames = ['Alto_enfolhamento', 'Baixo_enfolhamento', 'Medio_enfolhamento'];
         
-        // URL do modelo no Google Drive
-        const MODEL_URL = 'https://drive.google.com/uc?export=download&id=1U-xz4qdyxlWmVFeLEbmB7n69XduaHZpp/model.json';
+        // URL do modelo no GitHub
+        const MODEL_URL = 'https://raw.githubusercontent.com/1993elias/Enfolhamento/main/modelo_tfjs/model.json';
 
         // Elementos DOM
         const statusEl = document.getElementById('status');
@@ -306,6 +327,7 @@
         const classifyBtn = document.getElementById('classify-btn');
         const resultsContainer = document.getElementById('results-container');
         const resultsDiv = document.getElementById('results');
+        const mainResultDiv = document.getElementById('main-result');
 
         // Carregar modelo
         async function loadModel() {
@@ -318,6 +340,9 @@
                 statusEl.textContent = '✅ Modelo carregado! Pronto para classificar imagens.';
                 statusEl.className = 'status ready';
                 
+                console.log('Modelo carregado com sucesso!');
+                console.log('Input shape:', model.input.shape);
+                
                 // Esconder status após 3 segundos
                 setTimeout(() => {
                     statusEl.style.display = 'none';
@@ -325,7 +350,7 @@
                 
             } catch (error) {
                 console.error('Erro ao carregar modelo:', error);
-                statusEl.textContent = '❌ Erro ao carregar modelo. Verifique a URL do modelo.';
+                statusEl.textContent = '❌ Erro ao carregar modelo. Verifique se os arquivos estão no GitHub.';
                 statusEl.className = 'status error';
             }
         }
@@ -407,11 +432,12 @@
                     imgElement.src = currentImage;
                 });
 
-                // Converter para tensor
+                // Converter para tensor (seguindo o preprocessamento do seu modelo)
                 const tensor = tf.browser.fromPixels(imgElement)
                     .resizeNearestNeighbor([224, 224]) // Redimensionar para 224x224
-                    .expandDims(0) // Adicionar dimensão batch
-                    .cast('float32');
+                    .toFloat()
+                    .div(255.0) // Normalizar para 0-1 (como no seu modelo)
+                    .expandDims(0); // Adicionar dimensão batch
 
                 // Fazer predição
                 const predictions = model.predict(tensor);
@@ -443,7 +469,21 @@
             // Ordenar por confiança (maior para menor)
             results.sort((a, b) => b.confidence - a.confidence);
 
-            // Gerar HTML dos resultados
+            // Resultado principal (maior confiança)
+            const topResult = results[0];
+            const topConfidence = topResult.confidence.toFixed(1);
+            
+            mainResultDiv.innerHTML = `
+                <div class="main-prediction">
+                    <h3>🎯 Classificação Principal</h3>
+                    <div style="font-size: 1.5em; margin: 10px 0;">
+                        ${formatClassName(topResult.class)}
+                    </div>
+                    <div class="confidence">${topConfidence}%</div>
+                </div>
+            `;
+
+            // Gerar HTML de todos os resultados
             let resultsHTML = '';
             results.forEach(result => {
                 const confidence = result.confidence.toFixed(1);
@@ -473,13 +513,14 @@
         }
 
         function formatClassName(className) {
+            // Converter de "Alto_enfolhamento" para "Alto Enfolhamento"
             return className.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
         }
 
         function getConfidenceColor(confidence) {
-            if (confidence > 70) return '#48bb78';
-            if (confidence > 40) return '#ed8936';
-            return '#f56565';
+            if (confidence > 70) return '#48bb78';  // Verde
+            if (confidence > 40) return '#ed8936';  // Laranja
+            return '#f56565';                       // Vermelho
         }
 
         function resetInterface() {
