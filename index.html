@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enfolhamento - Classificador de Imagens</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.22.0/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #4a5568;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 1.1em;
+        }
+
+        .upload-zone {
+            border: 3px dashed #cbd5e0;
+            border-radius: 15px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f7fafc;
+        }
+
+        .upload-zone:hover {
+            border-color: #667eea;
+            background: #edf2f7;
+            transform: translateY(-2px);
+        }
+
+        .upload-zone.dragover {
+            border-color: #667eea;
+            background: #e6fffa;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            color: #a0aec0;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #4a5568;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            color: #718096;
+            font-size: 0.9em;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .preview-container {
+            display: none;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-container {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .result-item {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .result-item:hover {
+            background: #edf2f7;
+            transform: translateX(5px);
+        }
+
+        .result-label {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 1.1em;
+        }
+
+        .result-confidence {
+            font-weight: 700;
+            font-size: 1.2em;
+        }
+
+        .confidence-bar {
+            width: 100px;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-left: 15px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s ease;
+        }
+
+        .high-confidence { background: #48bb78; }
+        .medium-confidence { background: #ed8936; }
+        .low-confidence { background: #f56565; }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-size: 1.1em;
+            margin: 20px 0;
+        }
+
+        .loading::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: none;
+        }
+
+        .status.loading {
+            background: #bee3f8;
+            color: #2b6cb0;
+            display: block;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #c53030;
+            display: block;
+        }
+
+        .status.ready {
+            background: #c6f6d5;
+            color: #2f855a;
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .upload-zone {
+                padding: 30px 15px;
+            }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌿 Enfolhamento</h1>
+            <p>Classificador de Imagens com IA</p>
+        </div>
+
+        <div class="status loading" id="status">
+            Carregando modelo de IA...
+        </div>
+
+        <div class="upload-zone" id="upload-zone">
+            <div class="upload-icon">📸</div>
+            <div class="upload-text">Clique ou arraste uma imagem aqui</div>
+            <div class="upload-subtext">Formatos: JPG, PNG, WebP (máx. 10MB)</div>
+            <input type="file" id="file-input" accept="image/*">
+        </div>
+
+        <div class="preview-container" id="preview-container">
+            <img id="image-preview" class="image-preview" alt="Preview da imagem">
+            <br>
+            <button class="btn" id="classify-btn" onclick="classifyImage()">🔍 Classificar Imagem</button>
+            <button class="btn" onclick="resetInterface()">🔄 Nova Imagem</button>
+        </div>
+
+        <div class="results-container" id="results-container">
+            <h3 style="color: #4a5568; margin-bottom: 20px; text-align: center;">📊 Resultados da Classificação</h3>
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Classificador baseado em CNN • TensorFlow.js</p>
+    </div>
+
+    <script>
+        let model = null;
+        let currentImage = null;
+        
+        // Classes do modelo (na ordem correta)
+        const classNames = ['Alto_enfolhamento', 'Baixo_enfolhamento', 'Medio_enfolhamento'];
+        
+        // URL do modelo no Google Drive
+        const MODEL_URL = 'https://drive.google.com/uc?export=download&id=1U-xz4qdyxlWmVFeLEbmB7n69XduaHZpp/model.json';
+
+        // Elementos DOM
+        const statusEl = document.getElementById('status');
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const previewContainer = document.getElementById('preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const classifyBtn = document.getElementById('classify-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const resultsDiv = document.getElementById('results');
+
+        // Carregar modelo
+        async function loadModel() {
+            try {
+                statusEl.textContent = 'Carregando modelo de IA...';
+                statusEl.className = 'status loading';
+                
+                model = await tf.loadLayersModel(MODEL_URL);
+                
+                statusEl.textContent = '✅ Modelo carregado! Pronto para classificar imagens.';
+                statusEl.className = 'status ready';
+                
+                // Esconder status após 3 segundos
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+                
+            } catch (error) {
+                console.error('Erro ao carregar modelo:', error);
+                statusEl.textContent = '❌ Erro ao carregar modelo. Verifique a URL do modelo.';
+                statusEl.className = 'status error';
+            }
+        }
+
+        // Event listeners para upload
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', handleDragOver);
+        uploadZone.addEventListener('drop', handleDrop);
+        uploadZone.addEventListener('dragleave', handleDragLeave);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            // Validar tipo de arquivo
+            if (!file.type.startsWith('image/')) {
+                alert('Por favor, selecione um arquivo de imagem.');
+                return;
+            }
+
+            // Validar tamanho (máx 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                alert('Arquivo muito grande. Máximo 10MB.');
+                return;
+            }
+
+            // Mostrar preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                currentImage = e.target.result;
+                previewContainer.style.display = 'block';
+                resultsContainer.style.display = 'none';
+                classifyBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function classifyImage() {
+            if (!model || !currentImage) {
+                alert('Modelo não carregado ou imagem não selecionada.');
+                return;
+            }
+
+            try {
+                classifyBtn.disabled = true;
+                classifyBtn.textContent = '🔄 Classificando...';
+
+                // Preparar imagem
+                const imgElement = new Image();
+                imgElement.crossOrigin = 'anonymous';
+                
+                await new Promise((resolve) => {
+                    imgElement.onload = resolve;
+                    imgElement.src = currentImage;
+                });
+
+                // Converter para tensor
+                const tensor = tf.browser.fromPixels(imgElement)
+                    .resizeNearestNeighbor([224, 224]) // Redimensionar para 224x224
+                    .expandDims(0) // Adicionar dimensão batch
+                    .cast('float32');
+
+                // Fazer predição
+                const predictions = model.predict(tensor);
+                const predArray = await predictions.data();
+                
+                // Limpar tensors da memória
+                tensor.dispose();
+                predictions.dispose();
+
+                // Mostrar resultados
+                displayResults(predArray);
+                
+            } catch (error) {
+                console.error('Erro na classificação:', error);
+                alert('Erro ao classificar imagem. Tente novamente.');
+            } finally {
+                classifyBtn.disabled = false;
+                classifyBtn.textContent = '🔍 Classificar Imagem';
+            }
+        }
+
+        function displayResults(predictions) {
+            // Criar array com classes e probabilidades
+            const results = classNames.map((className, index) => ({
+                class: className,
+                confidence: predictions[index] * 100
+            }));
+
+            // Ordenar por confiança (maior para menor)
+            results.sort((a, b) => b.confidence - a.confidence);
+
+            // Gerar HTML dos resultados
+            let resultsHTML = '';
+            results.forEach(result => {
+                const confidence = result.confidence.toFixed(1);
+                const confidenceClass = confidence > 70 ? 'high-confidence' : 
+                                      confidence > 40 ? 'medium-confidence' : 'low-confidence';
+                
+                resultsHTML += `
+                    <div class="result-item">
+                        <div>
+                            <div class="result-label">${formatClassName(result.class)}</div>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="result-confidence" style="color: ${getConfidenceColor(confidence)}">${confidence}%</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill ${confidenceClass}" style="width: ${confidence}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            resultsDiv.innerHTML = resultsHTML;
+            resultsContainer.style.display = 'block';
+
+            // Scroll suave para os resultados
+            resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function formatClassName(className) {
+            return className.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function getConfidenceColor(confidence) {
+            if (confidence > 70) return '#48bb78';
+            if (confidence > 40) return '#ed8936';
+            return '#f56565';
+        }
+
+        function resetInterface() {
+            currentImage = null;
+            previewContainer.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            fileInput.value = '';
+            
+            // Reset upload zone
+            uploadZone.classList.remove('dragover');
+        }
+
+        // Carregar modelo quando a página carrega
+        window.addEventListener('load', loadModel);
+
+        // Prevenir comportamento padrão de drag/drop na página
+        window.addEventListener('dragover', e => e.preventDefault());
+        window.addEventListener('drop', e => e.preventDefault());
+    </script>
+</body>
+</html>
